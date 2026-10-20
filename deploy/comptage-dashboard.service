@@ -1,0 +1,14 @@
+# Dashboard Streamlit, écoute uniquement en local : y accéder par tunnel SSH.
+[Unit]
+Description=Comptage Train FR - dashboards
+After=network-online.target
+
+[Service]
+User=comptage
+WorkingDirectory=/opt/comptage-train-fr
+EnvironmentFile=/opt/comptage-train-fr/.env
+ExecStart=/opt/comptage-train-fr/.venv/bin/streamlit run dashboards/d0_monitoring.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

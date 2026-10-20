@@ -1,0 +1,13 @@
+# Collecte d'une fréquence donnée (%i = daily | weekly).
+# Installation : voir docs/deploiement_vps.md
+[Unit]
+Description=Comptage Train FR - collecte %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=comptage
+WorkingDirectory=/opt/comptage-train-fr
+EnvironmentFile=/opt/comptage-train-fr/.env
+ExecStart=/opt/comptage-train-fr/.venv/bin/comptage ingest --schedule %i

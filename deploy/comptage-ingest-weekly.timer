@@ -1,0 +1,11 @@
+[Unit]
+Description=Collecte hebdomadaire (jeux SNCF, IDFM, calendriers)
+
+[Timer]
+OnCalendar=Mon *-*-* 06:00:00
+Persistent=true
+RandomizedDelaySec=10min
+Unit=comptage-ingest@weekly.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,93 @@
+# Catalogue des sources Open Data collectées par l'étape 1.
+#
+# Chaque entrée décrit UN jeu de données. Le collecteur le télécharge tel quel
+# (couche bronze = brut, immuable) et journalise chaque appel HTTP.
+#
+# Champs :
+#   kind      : type de connecteur (opendatasoft | http_json | prim)
+#   enabled   : false pour désactiver sans supprimer
+#   schedule  : daily | weekly (filtré par `comptage ingest --schedule ...`)
+#   verified  : false tant que l'identifiant n'a pas été confirmé par
+#               `comptage check-sources` depuis le VPS
+#
+# Les identifiants IDFM changent à chaque trimestre publié : lancer
+# `comptage check-sources` après chaque publication et ajuster ici.
+
+sources:
+  # --- SNCF Open Data (Opendatasoft, API Explore v2.1) ----------------------
+  - name: sncf_comptage_montants_trains
+    kind: opendatasoft
+    base_url: https://ressources.data.sncf.com
+    dataset_id: comptage-voyageurs-trains-transilien
+    schedule: weekly
+    enabled: true
+    verified: true
+
+  - name: sncf_frequentation_gares
+    kind: opendatasoft
+    base_url: https://ressources.data.sncf.com
+    dataset_id: frequentation-gares
+    schedule: weekly
+    enabled: true
+    verified: false
+
+  # --- Île-de-France Mobilités (portail Opendatasoft) -----------------------
+  - name: idfm_validations_ferre_jour
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: validations-reseau-ferre-nombre-validations-par-jour-1er-semestre
+    schedule: weekly
+    enabled: true
+    verified: false
+
+  - name: idfm_validations_ferre_profils_horaires
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: validations-reseau-ferre-profils-horaires-par-jour-type-1er-semestre
+    schedule: weekly
+    enabled: true
+    verified: false
+
+  # --- Contexte calendaire ---------------------------------------------------
+  - name: education_calendrier_scolaire
+    kind: opendatasoft
+    base_url: https://data.education.gouv.fr
+    dataset_id: fr-en-calendrier-scolaire
+    schedule: weekly
+    enabled: true
+    verified: false
+
+  - name: jours_feries_metropole
+    kind: http_json
+    url: https://calendrier.api.gouv.fr/jours-feries/metropole.json
+    schedule: weekly
+    enabled: true
+    verified: false
+
+  # --- Météo (Open-Meteo, gratuit, sans clé) --------------------------------
+  # Prévisions horaires sur Paris : collectées chaque jour, elles
+  # deviennent un historique de prévisions (utile pour l'étape 4).
+  - name: openmeteo_prevision_paris
+    kind: http_json
+    url: https://api.open-meteo.com/v1/forecast
+    params:
+      latitude: 48.8566
+      longitude: 2.3522
+      hourly: temperature_2m,precipitation,rain,snowfall,wind_speed_10m,weather_code
+      timezone: Europe/Paris
+      past_days: 2
+      forecast_days: 7
+    schedule: daily
+    enabled: true
+    verified: false
+
+  # --- PRIM (temps réel, clé requise) ---------------------------------------
+  # Reste inactif tant que PRIM_API_KEY est vide dans .env.
+  - name: prim_estimated_timetable
+    kind: prim
+    url: https://prim.iledefrance-mobilites.fr/marketplace/estimated-timetable
+    params:
+      LineRef: ALL
+    schedule: daily
+    enabled: true
+    verified: false

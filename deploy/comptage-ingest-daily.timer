@@ -1,0 +1,11 @@
+[Unit]
+Description=Collecte quotidienne (météo, PRIM)
+
+[Timer]
+OnCalendar=*-*-* 05:30:00
+Persistent=true
+RandomizedDelaySec=10min
+Unit=comptage-ingest@daily.service
+
+[Install]
+WantedBy=timers.target
