@@ -12,8 +12,8 @@
 #   verified  : false tant que l'identifiant n'a pas été confirmé par
 #               `comptage check-sources` (lancé chaque jour par GitHub Actions)
 #
-# Les identifiants IDFM changent à chaque trimestre publié : lancer
-# `comptage check-sources` après chaque publication et ajuster ici.
+# Si `check-sources` signale un KO, chercher l'identifiant actuel sur
+# data.gouv.fr (les ressources pointent vers l'API du producteur).
 
 sources:
   # --- SNCF Open Data (Opendatasoft, API Explore v2.1) ----------------------
@@ -31,24 +31,75 @@ sources:
     dataset_id: frequentation-gares
     schedule: daily
     enabled: true
-    verified: false
+    verified: true
 
   # --- Île-de-France Mobilités (portail Opendatasoft) -----------------------
-  - name: idfm_validations_ferre_jour
+  # IDFM publie un jeu par numéro de trimestre (1er à 4ème) et le remplace par
+  # l'année la plus récente à chaque publication. On collecte les quatre :
+  # le bronze garde chaque version, donc l'historique des années passées.
+  - name: idfm_validations_ferre_jour_t1
     kind: opendatasoft
     base_url: https://data.iledefrance-mobilites.fr
-    dataset_id: validations-reseau-ferre-nombre-validations-par-jour-1er-semestre
+    dataset_id: validations-reseau-ferre-nombre-validations-par-jour-1er-trimestre
     schedule: daily
     enabled: true
-    verified: false
+    verified: true
 
-  - name: idfm_validations_ferre_profils_horaires
+  - name: idfm_validations_ferre_jour_t2
     kind: opendatasoft
     base_url: https://data.iledefrance-mobilites.fr
-    dataset_id: validations-reseau-ferre-profils-horaires-par-jour-type-1er-semestre
+    dataset_id: validations-reseau-ferre-nombre-validations-par-jour-2eme-trimestre
     schedule: daily
     enabled: true
-    verified: false
+    verified: true
+
+  - name: idfm_validations_ferre_jour_t3
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: validations-reseau-ferre-nombre-validations-par-jour-3eme-trimestre
+    schedule: daily
+    enabled: true
+    verified: true
+
+  - name: idfm_validations_ferre_jour_t4
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: validations-reseau-ferre-nombre-validations-par-jour-4eme-trimestre
+    schedule: daily
+    enabled: true
+    verified: true
+
+  - name: idfm_validations_ferre_profils_horaires_t1
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: validations-reseau-ferre-profils-horaires-par-jour-type-1er-trimestre
+    schedule: daily
+    enabled: true
+    verified: true
+
+  - name: idfm_validations_ferre_profils_horaires_t2
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: validations-sur-le-reseau-ferre-profils-horaires-par-jour-type-2eme-trimestre
+    schedule: daily
+    enabled: true
+    verified: true
+
+  - name: idfm_validations_ferre_profils_horaires_t3
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: validations-reseau-ferre-profils-horaires-par-jour-type-3eme-trimestre
+    schedule: daily
+    enabled: true
+    verified: true
+
+  - name: idfm_validations_ferre_profils_horaires_t4
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: validations-reseau-ferre-profils-horaires-par-jour-type-4eme-trimestre
+    schedule: daily
+    enabled: true
+    verified: true
 
   # --- Contexte calendaire ---------------------------------------------------
   - name: education_calendrier_scolaire
@@ -57,14 +108,14 @@ sources:
     dataset_id: fr-en-calendrier-scolaire
     schedule: daily
     enabled: true
-    verified: false
+    verified: true
 
   - name: jours_feries_metropole
     kind: http_json
     url: https://calendrier.api.gouv.fr/jours-feries/metropole.json
     schedule: daily
     enabled: true
-    verified: false
+    verified: true
 
   # --- Météo (Open-Meteo, gratuit, sans clé) --------------------------------
   # Prévisions horaires sur Paris : collectées chaque heure, elles
