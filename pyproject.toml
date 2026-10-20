@@ -1,0 +1,28 @@
+[project]
+name = "comptage-train"
+version = "0.1.0"
+description = "Comptage et prédiction de la fréquentation Transilien, 100 % Open Data"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "duckdb>=1.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dashboards = ["streamlit>=1.50", "pandas>=2.2"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+comptage = "comptage_train.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
