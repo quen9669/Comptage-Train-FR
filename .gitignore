@@ -1,0 +1,7 @@
+# Données locales : jamais versionnées (volumineuses et régénérables)
+data/
+.env
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
