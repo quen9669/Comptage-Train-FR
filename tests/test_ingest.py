@@ -123,6 +123,16 @@ def test_prim_sends_key_header(tmp_path, monkeypatch):
     assert results[0].outcome == "new" and headers["apikey"] == "secret"
 
 
+def test_json_is_stored_gzipped(tmp_path):
+    import gzip
+    payload = b'{"Siri": {"x": "' + b"a" * 10_000 + b'"}}'
+    with client_for(lambda req: httpx.Response(200, content=payload)) as client:
+        run_ingestion([METEO], tmp_path, client)
+    (stored,) = (tmp_path / "bronze" / "meteo_test").rglob("*.gz")
+    assert stored.name.endswith(".json.gz") and stored.stat().st_size < len(payload) / 10
+    assert gzip.decompress(stored.read_bytes()) == payload
+
+
 def test_logs_are_append_only_parquet_files(tmp_path):
     with client_for(lambda req: httpx.Response(200, content=b"x")) as client:
         run_ingestion([METEO], tmp_path, client)

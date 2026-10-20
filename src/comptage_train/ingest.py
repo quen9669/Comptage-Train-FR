@@ -91,11 +91,12 @@ def _ingest_one(log, client, run_id, source, data_root, previous, sleep) -> Sour
     if digest == previous_sha:
         return _finish(log, run, "unchanged", "contenu identique au dernier dépôt")
 
-    path = bronze.bronze_path(data_root, source.name, started, digest, spec.file_format)
-    bronze.write_immutable(path, result.content)
+    stored, extension = bronze.encode(result.content, spec.file_format)
+    path = bronze.bronze_path(data_root, source.name, started, digest, extension)
+    bronze.write_immutable(path, stored)
     relative = path.relative_to(data_root).as_posix()
     log.add("bronze_files", [source.name, started, digest, len(result.content),
-                             spec.file_format, relative, spec.url, run["source_version"]])
+                             extension, relative, spec.url, run["source_version"]])
     run["bronze_path"] = relative
     return _finish(log, run, "new", "")
 
