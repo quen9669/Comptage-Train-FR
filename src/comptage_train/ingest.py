@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 
 from . import bronze, warehouse
-from .connectors import SourceNotReady, build_request
+from .connectors import SourceNotReady, build_request, catalog_url, parse_version
 from .http_client import CallRecord, FetchError, fetch
 from .settings import Source
 
@@ -32,7 +32,7 @@ def run_ingestion(
 ) -> list[SourceOutcome]:
     run_started = datetime.now(timezone.utc)
     run_id = run_started.strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:6]
-    known_sha = warehouse.last_sha256_by_source(data_root)
+    last_deposits = warehouse.last_deposit_by_source(data_root)
     log = warehouse.RunLog()
     results = []
     try:
@@ -40,17 +40,18 @@ def run_ingestion(
             if not source.enabled or (schedule and source.schedule != schedule):
                 continue
             results.append(_ingest_one(log, client, run_id, source, data_root,
-                                       known_sha.get(source.name), sleep))
+                                       last_deposits.get(source.name, (None, None)), sleep))
     finally:
         # Même si une erreur inattendue interrompt la boucle, on garde la trace
         log.flush(data_root, run_id, f"{run_started:%Y-%m-%d}")
     return results
 
 
-def _ingest_one(log, client, run_id, source, data_root, previous_sha, sleep) -> SourceOutcome:
+def _ingest_one(log, client, run_id, source, data_root, previous, sleep) -> SourceOutcome:
+    previous_sha, previous_version = previous
     started = datetime.now(timezone.utc)
     run = dict(run_id=run_id, source=source.name, started_at=started, http_status=None,
-               attempts=0, bytes=None, sha256=None, bronze_path=None)
+               attempts=0, bytes=None, sha256=None, bronze_path=None, source_version=None)
 
     def record_call(call: CallRecord) -> None:
         log.add("http_calls", [run_id, source.name, call.url, call.attempt, call.started_at,
@@ -61,8 +62,23 @@ def _ingest_one(log, client, run_id, source, data_root, previous_sha, sleep) -> 
     except SourceNotReady as exc:
         return _finish(log, run, "skipped", str(exc))
 
+    kwargs = {"sleep": sleep} if sleep else {}
+    meta_url = catalog_url(source)
+    if meta_url:
+        # Petite requête de métadonnées d'abord : si le producteur n'a pas
+        # retraité le jeu, on évite de retélécharger plusieurs Mo pour rien.
+        try:
+            meta = fetch(client, meta_url, on_call=record_call, **kwargs)
+        except FetchError as exc:
+            run.update(http_status=exc.status, attempts=exc.attempts)
+            return _finish(log, run, "error", f"métadonnées : {exc}")
+        run["source_version"] = parse_version(meta.content)
+        if run["source_version"] and run["source_version"] == previous_version:
+            run.update(http_status=meta.status, attempts=meta.attempts)
+            return _finish(log, run, "unchanged",
+                           f"version producteur inchangée ({previous_version})")
+
     try:
-        kwargs = {"sleep": sleep} if sleep else {}
         result = fetch(client, spec.url, params=spec.params, headers=spec.headers,
                        on_call=record_call, **kwargs)
     except FetchError as exc:
@@ -79,7 +95,7 @@ def _ingest_one(log, client, run_id, source, data_root, previous_sha, sleep) -> 
     bronze.write_immutable(path, result.content)
     relative = path.relative_to(data_root).as_posix()
     log.add("bronze_files", [source.name, started, digest, len(result.content),
-                             spec.file_format, relative, spec.url])
+                             spec.file_format, relative, spec.url, run["source_version"]])
     run["bronze_path"] = relative
     return _finish(log, run, "new", "")
 
@@ -88,5 +104,5 @@ def _finish(log: warehouse.RunLog, run: dict, outcome: str, message: str) -> Sou
     log.add("ingestion_runs", [run["run_id"], run["source"], run["started_at"],
                                datetime.now(timezone.utc), outcome, run["http_status"],
                                run["attempts"], run["bytes"], run["sha256"],
-                               run["bronze_path"], message])
+                               run["bronze_path"], message, run["source_version"]])
     return SourceOutcome(run["source"], outcome, message)

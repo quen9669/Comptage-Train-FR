@@ -7,6 +7,7 @@ http_client / ingest, pour que toutes les sources soient monitorées pareil.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -48,7 +49,21 @@ def build_request(source: Source) -> RequestSpec:
 
 
 def catalog_url(source: Source) -> str | None:
-    """URL de métadonnées utilisée par `check-sources` (Opendatasoft seulement)."""
+    """URL des métadonnées du jeu (Opendatasoft seulement)."""
     if source.kind == "opendatasoft":
         return f"{source.base_url}/api/explore/v2.1/catalog/datasets/{source.dataset_id}"
     return None
+
+
+def parse_version(catalog_json: bytes) -> str | None:
+    """Date de dernier traitement des données annoncée par Opendatasoft.
+
+    Indispensable car l'export Parquet d'Opendatasoft n'est pas reproductible :
+    deux exports des mêmes lignes n'ont pas les mêmes octets, donc le SHA-256
+    seul ne suffit pas à détecter « rien n'a changé ».
+    """
+    try:
+        metas = json.loads(catalog_json).get("metas", {}).get("default", {})
+    except (ValueError, AttributeError):
+        return None  # réponse inattendue : on retombe sur la comparaison SHA-256
+    return metas.get("data_processed") or metas.get("modified")
