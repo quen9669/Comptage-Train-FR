@@ -30,10 +30,13 @@ TABLES: dict[str, tuple[str, str]] = {
         run_id VARCHAR, source VARCHAR, started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ,
         outcome VARCHAR,              -- new | unchanged | skipped | error
         http_status INTEGER, attempts INTEGER, bytes BIGINT, sha256 VARCHAR,
-        bronze_path VARCHAR, message VARCHAR"""),
+        bronze_path VARCHAR, message VARCHAR,
+        source_version VARCHAR        -- version annoncée par le producteur (si connue)
+        """),
     "bronze_files": ("bronze_raw", """
         source VARCHAR, ingested_at TIMESTAMPTZ, sha256 VARCHAR, bytes BIGINT,
-        format VARCHAR, path VARCHAR, origin_url VARCHAR"""),
+        format VARCHAR, path VARCHAR, origin_url VARCHAR,
+        source_version VARCHAR"""),
 }
 
 
@@ -68,28 +71,36 @@ def connect(data_root: Path) -> duckdb.DuckDBPyConnection:
     """Connexion DuckDB en mémoire avec une vue par journal.
 
     Vues : monitoring.http_calls, monitoring.ingestion_runs, bronze_raw.files.
+
+    Chaque vue part d'une table vide au schéma courant, unie par nom aux
+    fichiers : une colonne ajoutée plus tard existe toujours (NULL dans les
+    anciens journaux), ce qui permet de faire évoluer le schéma sans migration.
     """
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
+    con.execute("CREATE SCHEMA _empty")
     for table, (schema, columns) in TABLES.items():
         view = "files" if table == "bronze_files" else table
         con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+        con.execute(f"CREATE TABLE _empty.{table} ({columns})")
+        select = f"SELECT * FROM _empty.{table}"
         pattern = data_root / "logs" / table / "*" / "*.parquet"
         if any(pattern.parent.parent.glob("*/*.parquet")):
-            con.execute(f"CREATE VIEW {schema}.{view} AS SELECT * EXCLUDE (ingest_date) "
-                        f"FROM read_parquet('{pattern.as_posix()}', hive_partitioning = true, "
-                        f"union_by_name = true)")
-        else:
-            con.execute(f"CREATE TABLE {schema}.{view} ({columns})")
+            select += (f" UNION ALL BY NAME SELECT * EXCLUDE (ingest_date) "
+                       f"FROM read_parquet('{pattern.as_posix()}', hive_partitioning = true, "
+                       f"union_by_name = true)")
+        con.execute(f"CREATE VIEW {schema}.{view} AS {select}")
     return con
 
 
-def last_sha256_by_source(data_root: Path) -> dict[str, str]:
+def last_deposit_by_source(data_root: Path) -> dict[str, tuple[str, str | None]]:
+    """Pour chaque source : (sha256, version producteur) du dernier dépôt bronze."""
     con = connect(data_root)
     try:
         rows = con.execute(
-            "SELECT source, arg_max(sha256, ingested_at) FROM bronze_raw.files GROUP BY source"
+            "SELECT source, arg_max(sha256, ingested_at), arg_max(source_version, ingested_at) "
+            "FROM bronze_raw.files GROUP BY source"
         ).fetchall()
     finally:
         con.close()
-    return dict(rows)
+    return {source: (sha, version) for source, sha, version in rows}

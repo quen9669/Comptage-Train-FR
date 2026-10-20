@@ -10,6 +10,7 @@ Règles :
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,20 @@ def bronze_path(root: Path, source: str, ingested_at: datetime, digest: str, ext
     stamp = ingested_at.strftime("%Y%m%dT%H%M%SZ")
     return (root / "bronze" / source / f"ingest_date={ingested_at:%Y-%m-%d}"
             / f"{stamp}_{digest[:8]}.{ext}")
+
+
+# Formats texte compressés en gzip avant dépôt : un instantané temps réel PRIM
+# (SIRI JSON) pèse ~25 Mo brut et ~10 fois moins compressé. Parquet est déjà
+# compressé. DuckDB lit les .json.gz directement (read_json).
+COMPRESSED_FORMATS = {"json"}
+
+
+def encode(content: bytes, file_format: str) -> tuple[bytes, str]:
+    """Contenu à écrire et extension finale. Le SHA-256 reste celui du brut."""
+    if file_format in COMPRESSED_FORMATS:
+        # mtime=0 : même contenu brut -> mêmes octets compressés
+        return gzip.compress(content, compresslevel=9, mtime=0), f"{file_format}.gz"
+    return content, file_format
 
 
 def write_immutable(path: Path, content: bytes) -> None:

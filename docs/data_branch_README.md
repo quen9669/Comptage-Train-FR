@@ -3,7 +3,7 @@
 Cette branche est alimentée automatiquement par le workflow **Collecte**
 (GitHub Actions). Ne pas la modifier à la main.
 
-- `bronze/<source>/ingest_date=AAAA-MM-JJ/` : fichiers bruts tels que téléchargés
+- `bronze/<source>/ingest_date=AAAA-MM-JJ/` : fichiers bruts tels que téléchargés (JSON compressé en `.json.gz`)
 - `logs/http_calls/`, `logs/ingestion_runs/`, `logs/bronze_files/` : journaux Parquet
 
 ## Sources et licences
