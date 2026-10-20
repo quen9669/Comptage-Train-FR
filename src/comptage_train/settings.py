@@ -50,5 +50,5 @@ def load_sources(path: Path = DEFAULT_SOURCES_FILE) -> list[Source]:
 
 
 def data_dir() -> Path:
-    """Racine des données : bronze/ (fichiers bruts) et warehouse.duckdb."""
+    """Racine des données : bronze/ (fichiers bruts) et logs/ (journaux Parquet)."""
     return Path(os.environ.get("COMPTAGE_DATA_DIR", PROJECT_ROOT / "data")).resolve()

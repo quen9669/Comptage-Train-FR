@@ -15,6 +15,14 @@ sudo -u comptage .venv/bin/pip install -e ".[dashboards]"
 sudo -u comptage cp .env.example .env && sudo chmod 600 .env
 ```
 
+Reprendre l'historique déjà collecté par GitHub Actions, puis désactiver le
+workflow **Collecte** dans l'onglet Actions pour éviter deux collectes en parallèle :
+
+```bash
+sudo -u comptage git clone --branch data --single-branch \
+  https://github.com/quen9669/Comptage-Train-FR.git /opt/comptage-train-fr/data
+```
+
 Renseigner `PRIM_API_KEY` dans `/opt/comptage-train-fr/.env` (droits 600 : seul
 l'utilisateur `comptage` peut le lire).
 
