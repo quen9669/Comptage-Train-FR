@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import duckdb
 import httpx
 import pytest
 
+from comptage_train import warehouse
 from comptage_train.http_client import FetchError, fetch
 from comptage_train.ingest import run_ingestion
 from comptage_train.settings import Source
@@ -60,7 +60,7 @@ def test_ingestion_writes_bronze_and_skips_unchanged(tmp_path, monkeypatch):
     files = list((tmp_path / "bronze" / "sncf_test").rglob("*.parquet"))
     assert len(files) == 1 and files[0].read_bytes() == b"PAR1-fake-parquet"
 
-    con = duckdb.connect(str(tmp_path / "warehouse.duckdb"))
+    con = warehouse.connect(tmp_path)
     outcomes = con.execute(
         "SELECT outcome FROM monitoring.ingestion_runs ORDER BY started_at").fetchall()
     assert [o[0] for o in outcomes] == ["new", "skipped", "unchanged"]
@@ -71,7 +71,7 @@ def test_error_is_logged_not_raised(tmp_path):
     with client_for(lambda req: httpx.Response(503)) as client:
         results = run_ingestion([METEO], tmp_path, client, sleep=no_sleep)
     assert results[0].outcome == "error"
-    con = duckdb.connect(str(tmp_path / "warehouse.duckdb"))
+    con = warehouse.connect(tmp_path)
     assert con.execute("SELECT count(*) FROM monitoring.http_calls").fetchone()[0] == 4
 
 
@@ -86,3 +86,18 @@ def test_prim_sends_key_header(tmp_path, monkeypatch):
     with client_for(handler) as client:
         results = run_ingestion([PRIM], tmp_path, client)
     assert results[0].outcome == "new" and headers["apikey"] == "secret"
+
+
+def test_logs_are_append_only_parquet_files(tmp_path):
+    with client_for(lambda req: httpx.Response(200, content=b"x")) as client:
+        run_ingestion([METEO], tmp_path, client)
+        run_ingestion([METEO], tmp_path, client)
+    runs = sorted((tmp_path / "logs" / "ingestion_runs").rglob("*.parquet"))
+    assert len(runs) == 2  # un fichier par exécution, aucun n'est réécrit
+    con = warehouse.connect(tmp_path)
+    assert con.execute("SELECT count(*) FROM bronze_raw.files").fetchone()[0] == 1
+
+
+def test_connect_on_empty_data_dir(tmp_path):
+    con = warehouse.connect(tmp_path)
+    assert con.execute("SELECT count(*) FROM monitoring.ingestion_runs").fetchone()[0] == 0

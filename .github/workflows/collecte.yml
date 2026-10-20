@@ -1,0 +1,112 @@
+# Collecte automatique 24h/24 vers la branche `data`.
+#
+# Le code vient de `main`, l'historique (bronze + journaux) vit sur la branche
+# orpheline `data` : chaque exécution y ajoute ses fichiers et pousse un commit.
+# Rien n'est jamais réécrit, donc deux exécutions ne peuvent pas se contredire.
+name: Collecte
+
+on:
+  schedule:
+    - cron: "7 * * * *"    # toutes les heures : sources "hourly" (météo)
+    - cron: "37 5 * * *"   # chaque jour : sources "daily" (SNCF, IDFM, calendriers)
+    - cron: "37 6 * * 1"   # chaque lundi : sources "weekly"
+  workflow_dispatch:
+    inputs:
+      schedule:
+        description: Fréquence à collecter
+        type: choice
+        options: [hourly, daily, weekly]
+        default: daily
+
+permissions:
+  contents: write
+
+# Une seule collecte à la fois : la suivante attend au lieu d'être annulée.
+concurrency:
+  group: collecte
+  cancel-in-progress: false
+
+jobs:
+  collecte:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PRIM_API_KEY: ${{ secrets.PRIM_API_KEY }}
+      COMPTAGE_DATA_DIR: ${{ github.workspace }}/data
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - run: pip install -e .
+
+      - name: Choisir la fréquence
+        id: freq
+        run: |
+          case "${{ github.event.schedule }}" in
+            "7 * * * *")  echo "schedule=hourly" >> "$GITHUB_OUTPUT" ;;
+            "37 5 * * *") echo "schedule=daily"  >> "$GITHUB_OUTPUT" ;;
+            "37 6 * * 1") echo "schedule=weekly" >> "$GITHUB_OUTPUT" ;;
+            *)            echo "schedule=${{ inputs.schedule }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Récupérer l'historique (branche data)
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads origin data > /dev/null; then
+            git clone --quiet --depth 1 --branch data "$remote" data
+          else
+            # Premier passage : on crée la branche orpheline
+            git init --quiet -b data data
+            git -C data remote add origin "$remote"
+            cp docs/data_branch_README.md data/README.md
+          fi
+
+      - name: Vérifier les sources
+        if: steps.freq.outputs.schedule == 'daily'
+        run: |
+          {
+            echo "### Vérification des sources"
+            echo '```'
+            comptage check-sources || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collecter
+        id: ingest
+        run: |
+          set +e
+          comptage ingest --schedule "${{ steps.freq.outputs.schedule }}" | tee ingest.log
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Collecte ${{ steps.freq.outputs.schedule }}"
+            echo '```'
+            cat ingest.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publier sur la branche data
+        run: |
+          cd data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit --quiet -m "Collecte ${{ steps.freq.outputs.schedule }} $(date -u +%Y-%m-%dT%H:%MZ)"
+          # Les fichiers ont des noms uniques : un rebase ne peut pas créer de conflit.
+          for i in 1 2 3 4; do
+            git push --quiet origin data && exit 0
+            sleep $((2 ** i))
+            git pull --quiet --rebase origin data
+          done
+          exit 1
+
+      - name: Signaler une source en erreur
+        if: steps.ingest.outputs.status != '0'
+        run: |
+          echo "::error::Au moins une source est en erreur, voir le résumé de l'exécution."
+          exit 1

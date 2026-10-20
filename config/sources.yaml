@@ -6,9 +6,11 @@
 # Champs :
 #   kind      : type de connecteur (opendatasoft | http_json | prim)
 #   enabled   : false pour désactiver sans supprimer
-#   schedule  : daily | weekly (filtré par `comptage ingest --schedule ...`)
+#   schedule  : hourly | daily | weekly (filtré par `comptage ingest --schedule ...`)
+#               GitHub Actions : hourly toutes les heures, daily à 05:30 UTC,
+#               weekly le lundi 06:37 UTC. Un contenu inchangé n'est jamais re-stocké.
 #   verified  : false tant que l'identifiant n'a pas été confirmé par
-#               `comptage check-sources` depuis le VPS
+#               `comptage check-sources` (lancé chaque jour par GitHub Actions)
 #
 # Les identifiants IDFM changent à chaque trimestre publié : lancer
 # `comptage check-sources` après chaque publication et ajuster ici.
@@ -19,7 +21,7 @@ sources:
     kind: opendatasoft
     base_url: https://ressources.data.sncf.com
     dataset_id: comptage-voyageurs-trains-transilien
-    schedule: weekly
+    schedule: daily
     enabled: true
     verified: true
 
@@ -27,7 +29,7 @@ sources:
     kind: opendatasoft
     base_url: https://ressources.data.sncf.com
     dataset_id: frequentation-gares
-    schedule: weekly
+    schedule: daily
     enabled: true
     verified: false
 
@@ -36,7 +38,7 @@ sources:
     kind: opendatasoft
     base_url: https://data.iledefrance-mobilites.fr
     dataset_id: validations-reseau-ferre-nombre-validations-par-jour-1er-semestre
-    schedule: weekly
+    schedule: daily
     enabled: true
     verified: false
 
@@ -44,7 +46,7 @@ sources:
     kind: opendatasoft
     base_url: https://data.iledefrance-mobilites.fr
     dataset_id: validations-reseau-ferre-profils-horaires-par-jour-type-1er-semestre
-    schedule: weekly
+    schedule: daily
     enabled: true
     verified: false
 
@@ -53,19 +55,19 @@ sources:
     kind: opendatasoft
     base_url: https://data.education.gouv.fr
     dataset_id: fr-en-calendrier-scolaire
-    schedule: weekly
+    schedule: daily
     enabled: true
     verified: false
 
   - name: jours_feries_metropole
     kind: http_json
     url: https://calendrier.api.gouv.fr/jours-feries/metropole.json
-    schedule: weekly
+    schedule: daily
     enabled: true
     verified: false
 
   # --- Météo (Open-Meteo, gratuit, sans clé) --------------------------------
-  # Prévisions horaires sur Paris : collectées chaque jour, elles
+  # Prévisions horaires sur Paris : collectées chaque heure, elles
   # deviennent un historique de prévisions (utile pour l'étape 4).
   - name: openmeteo_prevision_paris
     kind: http_json
@@ -77,12 +79,15 @@ sources:
       timezone: Europe/Paris
       past_days: 2
       forecast_days: 7
-    schedule: daily
+    schedule: hourly
     enabled: true
     verified: false
 
   # --- PRIM (temps réel, clé requise) ---------------------------------------
-  # Reste inactif tant que PRIM_API_KEY est vide dans .env.
+  # Reste inactif tant que PRIM_API_KEY est vide (.env en local, secret
+  # GitHub en CI). Quotidien pour l'instant : un instantané temps réel de
+  # toutes les lignes pèse plusieurs Mo, trop lourd pour Git en horaire.
+  # Le passage à une fréquence plus fine se fera sur le VPS.
   - name: prim_estimated_timetable
     kind: prim
     url: https://prim.iledefrance-mobilites.fr/marketplace/estimated-timetable

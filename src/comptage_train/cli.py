@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="comptage")
     sub = parser.add_subparsers(dest="command", required=True)
     ingest = sub.add_parser("ingest", help="collecter les sources vers la couche bronze")
-    ingest.add_argument("--schedule", choices=["daily", "weekly"],
+    ingest.add_argument("--schedule", choices=["hourly", "daily", "weekly"],
                         help="ne collecter que les sources de cette fréquence")
     ingest.add_argument("--source", help="ne collecter qu'une source (nom du catalogue)")
     sub.add_parser("check-sources", help="vérifier que chaque jeu Opendatasoft existe")

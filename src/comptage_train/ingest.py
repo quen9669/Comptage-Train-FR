@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import duckdb
 import httpx
 
 from . import bronze, warehouse
@@ -31,66 +30,63 @@ def run_ingestion(
     schedule: str | None = None,
     sleep=None,
 ) -> list[SourceOutcome]:
-    run_id = uuid.uuid4().hex[:12]
-    con = warehouse.connect(data_root / "warehouse.duckdb")
+    run_started = datetime.now(timezone.utc)
+    run_id = run_started.strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:6]
+    known_sha = warehouse.last_sha256_by_source(data_root)
+    log = warehouse.RunLog()
     results = []
     try:
         for source in sources:
             if not source.enabled or (schedule and source.schedule != schedule):
                 continue
-            results.append(_ingest_one(con, client, run_id, source, data_root, sleep))
+            results.append(_ingest_one(log, client, run_id, source, data_root,
+                                       known_sha.get(source.name), sleep))
     finally:
-        con.close()
+        # Même si une erreur inattendue interrompt la boucle, on garde la trace
+        log.flush(data_root, run_id, f"{run_started:%Y-%m-%d}")
     return results
 
 
-def _ingest_one(con, client, run_id, source, data_root, sleep) -> SourceOutcome:
+def _ingest_one(log, client, run_id, source, data_root, previous_sha, sleep) -> SourceOutcome:
     started = datetime.now(timezone.utc)
-    log = dict(run_id=run_id, source=source.name, started_at=started, http_status=None,
+    run = dict(run_id=run_id, source=source.name, started_at=started, http_status=None,
                attempts=0, bytes=None, sha256=None, bronze_path=None)
 
     def record_call(call: CallRecord) -> None:
-        con.execute(
-            "INSERT INTO monitoring.http_calls VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [run_id, source.name, call.url, call.attempt, call.started_at,
-             call.duration_ms, call.http_status, call.bytes, call.error],
-        )
+        log.add("http_calls", [run_id, source.name, call.url, call.attempt, call.started_at,
+                               call.duration_ms, call.http_status, call.bytes, call.error])
 
     try:
         spec = build_request(source)
     except SourceNotReady as exc:
-        return _finish(con, log, "skipped", str(exc))
+        return _finish(log, run, "skipped", str(exc))
 
     try:
         kwargs = {"sleep": sleep} if sleep else {}
         result = fetch(client, spec.url, params=spec.params, headers=spec.headers,
                        on_call=record_call, **kwargs)
     except FetchError as exc:
-        log.update(http_status=exc.status, attempts=exc.attempts)
-        return _finish(con, log, "error", str(exc))
+        run.update(http_status=exc.status, attempts=exc.attempts)
+        return _finish(log, run, "error", str(exc))
 
     digest = bronze.sha256(result.content)
-    log.update(http_status=result.status, attempts=result.attempts,
+    run.update(http_status=result.status, attempts=result.attempts,
                bytes=len(result.content), sha256=digest)
-    if digest == warehouse.last_sha256(con, source.name):
-        return _finish(con, log, "unchanged", "contenu identique au dernier dépôt")
+    if digest == previous_sha:
+        return _finish(log, run, "unchanged", "contenu identique au dernier dépôt")
 
     path = bronze.bronze_path(data_root, source.name, started, digest, spec.file_format)
     bronze.write_immutable(path, result.content)
-    con.execute(
-        "INSERT INTO bronze_raw.files VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [source.name, started, digest, len(result.content), spec.file_format,
-         str(path.relative_to(data_root)), spec.url],
-    )
-    log["bronze_path"] = str(path.relative_to(data_root))
-    return _finish(con, log, "new", "")
+    relative = path.relative_to(data_root).as_posix()
+    log.add("bronze_files", [source.name, started, digest, len(result.content),
+                             spec.file_format, relative, spec.url])
+    run["bronze_path"] = relative
+    return _finish(log, run, "new", "")
 
 
-def _finish(con: duckdb.DuckDBPyConnection, log: dict, outcome: str, message: str) -> SourceOutcome:
-    con.execute(
-        "INSERT INTO monitoring.ingestion_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [log["run_id"], log["source"], log["started_at"], datetime.now(timezone.utc),
-         outcome, log["http_status"], log["attempts"], log["bytes"], log["sha256"],
-         log["bronze_path"], message],
-    )
-    return SourceOutcome(log["source"], outcome, message)
+def _finish(log: warehouse.RunLog, run: dict, outcome: str, message: str) -> SourceOutcome:
+    log.add("ingestion_runs", [run["run_id"], run["source"], run["started_at"],
+                               datetime.now(timezone.utc), outcome, run["http_status"],
+                               run["attempts"], run["bytes"], run["sha256"],
+                               run["bronze_path"], message])
+    return SourceOutcome(run["source"], outcome, message)
