@@ -4,7 +4,9 @@ Cette branche est alimentée automatiquement par le workflow **Collecte**
 (GitHub Actions). Ne pas la modifier à la main.
 
 - `bronze/<source>/ingest_date=AAAA-MM-JJ/` : fichiers bruts tels que téléchargés (JSON compressé en `.json.gz`)
-- `logs/http_calls/`, `logs/ingestion_runs/`, `logs/bronze_files/` : journaux Parquet
+- `logs/http_calls/`, `logs/ingestion_runs/`, `logs/bronze_files/`, `logs/quality_runs/` : journaux Parquet (ajout seul)
+- `silver/` : données typées et normalisées, recalculées depuis le bronze par `comptage qualify`
+- `quality/` : résultat de chaque règle de qualité, statut, score de confiance et lignage de chaque comptage
 
 ## Sources et licences
 

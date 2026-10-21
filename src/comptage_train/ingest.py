@@ -31,7 +31,7 @@ def run_ingestion(
     sleep=None,
 ) -> list[SourceOutcome]:
     run_started = datetime.now(timezone.utc)
-    run_id = run_started.strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:6]
+    run_id = new_run_id(run_started)
     last_deposits = warehouse.last_deposit_by_source(data_root)
     log = warehouse.RunLog()
     results = []
@@ -107,3 +107,7 @@ def _finish(log: warehouse.RunLog, run: dict, outcome: str, message: str) -> Sou
                                run["attempts"], run["bytes"], run["sha256"],
                                run["bronze_path"], message, run["source_version"]])
     return SourceOutcome(run["source"], outcome, message)
+
+
+def new_run_id(started: datetime) -> str:
+    return started.strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:6]
