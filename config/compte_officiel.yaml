@@ -1,0 +1,44 @@
+# Paramètres du compte officiel (couche gold). Le moteur est
+# src/comptage_train/gold.py ; chaque chiffre produit garde la version ci-dessous.
+#
+# Hiérarchie, par gare x ligne x date x tranche horaire :
+#   1. MESURE           comptage SNCF du jour, statut qualité VALIDE ou ATTENTION
+#   2. CORRIGE_OFFRE    train supprimé / sans arrêt -> 0. Non applicable tant que
+#                       les comptages n'ont pas de numéro de train (voir RM_03).
+#   3. RECONCILIE_IDFM  validations IDFM du jour x facteur d'étalonnage x profil horaire
+#   4. EXTRAPOLE        validations IDFM attendues (même zone, même catégorie de jour,
+#                       même mois, année précédente) x facteur x profil
+#
+# Toute modification d'un paramètre doit incrémenter `version`.
+
+version: "2026.10.1"
+
+etalonnage:
+  # Facteur alpha(gare, ligne) = médiane des rapports
+  #   montants SNCF de la journée / validations IDFM moyennes de la zone (même catégorie de jour)
+  # sur les journées mesurées complètes et sans erreur.
+  date_min: "2022-01-01"
+  # Les comptages d'une seule date (cas fréquent) donnent un facteur moins sûr.
+  calibration: >-
+    validation croisée (une journée retirée à la fois) sur 846 journées gare x ligne :
+    erreur médiane 9,6 %, erreur pondérée 16 %. Un facteur par gare donne 11 % / 27 %,
+    un facteur par ligne 23 % / 111 % : écartés (21/10/2026, notebook 02 §2).
+
+profil_horaire:
+  # Part de chaque tranche : profil IDFM de la zone (même catégorie de jour) ;
+  # à défaut, profil moyen SNCF de la ligne pour le même type de jour.
+  calibration: "écart moyen à la part mesurée : IDFM 2,9 pts, ligne SNCF 3,6 pts, gare SNCF 4,7 pts (21/10/2026)"
+
+extrapolation:
+  # Validations attendues = médiane des validations de la zone, même catégorie de jour IDFM,
+  # même mois de l'année, sur l'historique IDFM disponible ; sinon même catégorie toute l'année.
+  methode: mediane_meme_mois_meme_categorie
+  meteo: >-
+    non utilisée : sur 365 jours, pluie, température, neige et vent expliquent 6 % des écarts
+    journaliers de validations du réseau (R²), loin derrière les grèves et les fêtes (21/10/2026).
+
+score:
+  # Mesure : score de qualité de la ligne de comptage (étape 2).
+  reconcilie: {plafond: 80, penalite_une_seule_mesure: 10, penalite_dispersion: 10, seuil_dispersion: 0.5}
+  extrapole: {plafond: 60, penalite_une_seule_mesure: 10, penalite_dispersion: 10, seuil_dispersion: 0.5}
+  # dispersion = (max - min) / médiane des rapports ayant servi au facteur

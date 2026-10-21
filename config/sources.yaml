@@ -153,6 +153,23 @@ sources:
     enabled: true
     verified: false
 
+  # Historique météo observé (réanalyse ERA5, gratuit, sans clé), un point par jour
+  # depuis 2019 : sert à expliquer et extrapoler la fréquentation (étape 3).
+  # Le jeu entier est redemandé chaque jour : il ne change que par son dernier jour.
+  - name: openmeteo_historique_paris
+    kind: http_json
+    url: https://archive-api.open-meteo.com/v1/archive
+    params:
+      latitude: 48.8566
+      longitude: 2.3522
+      start_date: "2019-01-01"
+      end_date: "{aujourd_hui-1}"
+      daily: temperature_2m_mean,temperature_2m_max,precipitation_sum,snowfall_sum,wind_speed_10m_max,weather_code
+      timezone: Europe/Paris
+    schedule: daily
+    enabled: true
+    verified: false
+
   # --- PRIM (temps réel, clé requise) ---------------------------------------
   # Reste inactif tant que PRIM_API_KEY est vide (.env en local, secret
   # GitHub en CI). Quotidien pour l'instant : un instantané temps réel de

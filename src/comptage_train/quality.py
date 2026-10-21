@@ -257,7 +257,8 @@ def run_quality(data_root: Path, date_reference: str | None = None) -> list[tupl
         con.execute("SET enable_progress_bar = false")
         files = silver.build_silver(con, data_root, date_reference)
         rules = qualify(con, date_reference)
-        for schema, tables in warehouse.DERIVED.items():
+        for schema in ("silver", "quality"):
+            tables = warehouse.DERIVED[schema]
             (data_root / schema).mkdir(parents=True, exist_ok=True)
             for table in tables:
                 out = (data_root / schema / f"{table}.parquet").as_posix()

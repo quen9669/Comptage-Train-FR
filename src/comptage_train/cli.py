@@ -1,4 +1,4 @@
-"""Ligne de commande : `comptage ingest`, `comptage qualify` et `comptage check-sources`."""
+"""Ligne de commande : `comptage ingest`, `qualify`, `compte-officiel` et `check-sources`."""
 
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("check-sources", help="vérifier que chaque jeu Opendatasoft existe")
     qualify = sub.add_parser("qualify", help="construire la silver et appliquer les règles de qualité")
     qualify.add_argument("--date", help="date de référence AAAA-MM-JJ (défaut : aujourd'hui)")
+    compte = sub.add_parser("compte-officiel", help="calculer le compte officiel (après `qualify`)")
+    compte.add_argument("--date", help="date de référence AAAA-MM-JJ (défaut : aujourd'hui)")
     args = parser.parse_args(argv)
 
     load_dotenv()
@@ -29,6 +31,12 @@ def main(argv: list[str] | None = None) -> int:
 
         for statut, lignes, score in run_quality(data_dir(), args.date):
             print(f"{statut:<10} {lignes:>7} lignes  score moyen {score}")
+        return 0
+    if args.command == "compte-officiel":
+        from .gold import run_gold
+
+        for methode, lignes, voyageurs, score in run_gold(data_dir(), args.date):
+            print(f"{methode:<16} {lignes:>8} lignes  {voyageurs:>12} voyageurs  score moyen {score}")
         return 0
     sources = load_sources()
 

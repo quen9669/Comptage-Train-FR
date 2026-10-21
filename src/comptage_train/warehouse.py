@@ -42,6 +42,11 @@ TABLES: dict[str, tuple[str, str]] = {
     "quality_runs": ("monitoring", """
         run_id VARCHAR, run_at TIMESTAMPTZ, version_regles VARCHAR, date_reference DATE,
         source_sha256 VARCHAR, regle VARCHAR, resultat VARCHAR, lignes BIGINT"""),
+    # Une ligne par (exécution de `comptage compte-officiel`, méthode) : l'historique du compte.
+    # methode = 'BACKTEST' : voyageurs = journées testées, score_moyen = erreur médiane en %.
+    "gold_runs": ("monitoring", """
+        run_id VARCHAR, run_at TIMESTAMPTZ, version_moteur VARCHAR, date_reference DATE,
+        methode VARCHAR, lignes BIGINT, voyageurs BIGINT, score_moyen DOUBLE"""),
 }
 
 # Couches dérivées (recalculables depuis le bronze), écrites par `comptage qualify`
@@ -49,6 +54,7 @@ DERIVED = {
     "silver": ["calendrier", "comptages", "correspondance_gares", "gares_sncf", "profils_tranches",
                "schema_contrats", "validations_zone_jour", "zones_idfm"],
     "quality": ["comptages_qualifies", "controles", "regles"],
+    "gold": ["etalonnage", "backtest", "compte_officiel"],
 }
 
 
@@ -82,7 +88,7 @@ class RunLog:
 def connect(data_root: Path) -> duckdb.DuckDBPyConnection:
     """Connexion DuckDB en mémoire avec une vue par journal.
 
-    Vues : monitoring.http_calls, monitoring.ingestion_runs, monitoring.quality_runs,
+    Vues : monitoring.http_calls, monitoring.ingestion_runs, monitoring.quality_runs, monitoring.gold_runs,
     bronze_raw.files.
 
     Chaque vue part d'une table vide au schéma courant, unie par nom aux
@@ -113,8 +119,12 @@ def connect_derived(data_root: Path) -> duckdb.DuckDBPyConnection:
         con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
         for table in tables:
             path = data_root / schema / f"{table}.parquet"
+            parts = data_root / schema / table  # table partitionnée (un fichier par mois)
             if path.exists():
                 con.execute(f"CREATE VIEW {schema}.{table} AS SELECT * FROM '{path.as_posix()}'")
+            elif any(parts.glob("*.parquet")):
+                con.execute(f"CREATE VIEW {schema}.{table} AS SELECT * FROM read_parquet("
+                            f"'{(parts / '*.parquet').as_posix()}', hive_partitioning = false)")
     return con
 
 

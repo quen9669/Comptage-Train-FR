@@ -10,7 +10,7 @@ d'affluence, à partir **uniquement de données Open Data publiques** (SNCF Open
 |---|---|---|---|
 | 1 | Ingestion historisée (bronze) + télémétrie des API | D0 Monitoring | ✅ |
 | 2 | Qualification : règles RT/RM, score de confiance, lineage (silver) | D1, D2 | ✅ ([profilage](notebooks/01_profilage_donnees.ipynb), [règles](config/regles_qualite.yaml)) |
-| 3 | Compte officiel : réconciliation, imputation (gold) | D3 | à venir |
+| 3 | Compte officiel : réconciliation, imputation (gold) | D3 | ✅ ([notebook](notebooks/02_compte_officiel.ipynb), [paramètres](config/compte_officiel.yaml)) |
 | 4 | Prédiction LightGBM quantile + SHAP, API FastAPI | D4 | à venir |
 
 ## Profilage des données (étape 2A)
@@ -47,7 +47,32 @@ référence identiques, les fichiers produits sont identiques à l'octet près.
 
 ```bash
 comptage qualify                    # écrit data/silver/*.parquet et data/quality/*.parquet
-streamlit run dashboards/app.py     # D0 monitoring, D1 qualité, D2 lignage et confiance
+streamlit run dashboards/app.py     # D0 monitoring, D1 qualité, D2 lignage, D3 compte officiel
+```
+
+## Compte officiel (étape 3)
+
+`comptage compte-officiel` (lancé après `comptage qualify` par la collecte quotidienne) produit
+`gold.compte_officiel` : les voyageurs montants par **gare × ligne × date × tranche horaire**,
+chaque jour depuis le début de la fenêtre IDFM et jusqu'à aujourd'hui
+([`gold.py`](src/comptage_train/gold.py)). Chaque chiffre porte sa méthode :
+
+| Méthode | Quand | Calcul | Confiance |
+|---|---|---|---|
+| `MESURE` | la SNCF a compté la tranche, sans erreur qualité | somme des comptages | score qualité (étape 2) |
+| `RECONCILIE_IDFM` | validations IDFM publiées pour ce jour | α × validations du jour × part de la tranche | ≤ 80 |
+| `EXTRAPOLE` | validations pas encore publiées | α × validations attendues (même mois, même catégorie de jour) × part | ≤ 60 |
+
+α (gare × ligne) est appris sur les journées mesurées (`gold.etalonnage`). En validation croisée,
+une journée reconstruite s'écarte de la mesure de 10 % en médiane (`gold.backtest`). Le
+[notebook 02](notebooks/02_compte_officiel.ipynb) justifie chaque choix : granularité d'α, profil
+horaire, modulation journalière, effet (faible) de la météo. Les composants de chaque chiffre
+(α, validations, part de la tranche, comptages source) sont gardés pour refaire le calcul.
+`gold/compte_officiel/` est découpé par mois : Git ne stocke chaque jour que le mois qui change.
+
+```bash
+comptage qualify && comptage compte-officiel
+streamlit run dashboards/app.py     # + D3 compte officiel
 ```
 
 ## Architecture de l'étape 1
@@ -84,7 +109,7 @@ l'historique sur la branche orpheline **`data`** (le code reste sur `main`) :
 | Déclencheur | Sources |
 |---|---|
 | toutes les heures (hh:07 UTC) | `hourly` : prévisions Open-Meteo |
-| chaque jour 05:37 UTC | `daily` : SNCF, IDFM, calendriers, PRIM + `check-sources` |
+| chaque jour 05:37 UTC | `daily` : SNCF, IDFM, calendriers, météo historique, PRIM + `check-sources`, puis qualification et compte officiel |
 | chaque lundi 06:37 UTC | `weekly` |
 
 Le résumé de chaque exécution (onglet **Actions**) affiche le résultat par source.
@@ -113,6 +138,7 @@ cp .env.example .env            # renseigner PRIM_API_KEY quand elle est disponi
 comptage check-sources          # vérifie que chaque jeu de données existe
 comptage ingest                 # collecte toutes les sources actives
 comptage qualify                # silver + règles de qualité
+comptage compte-officiel        # compte officiel (gold)
 streamlit run dashboards/app.py
 pytest
 ```
