@@ -1,4 +1,4 @@
-"""Ligne de commande : `comptage ingest` et `comptage check-sources`."""
+"""Ligne de commande : `comptage ingest`, `comptage qualify` et `comptage check-sources`."""
 
 from __future__ import annotations
 
@@ -19,9 +19,17 @@ def main(argv: list[str] | None = None) -> int:
                         help="ne collecter que les sources de cette fréquence")
     ingest.add_argument("--source", help="ne collecter qu'une source (nom du catalogue)")
     sub.add_parser("check-sources", help="vérifier que chaque jeu Opendatasoft existe")
+    qualify = sub.add_parser("qualify", help="construire la silver et appliquer les règles de qualité")
+    qualify.add_argument("--date", help="date de référence AAAA-MM-JJ (défaut : aujourd'hui)")
     args = parser.parse_args(argv)
 
     load_dotenv()
+    if args.command == "qualify":
+        from .quality import run_quality
+
+        for statut, lignes, score in run_quality(data_dir(), args.date):
+            print(f"{statut:<10} {lignes:>7} lignes  score moyen {score}")
+        return 0
     sources = load_sources()
 
     if args.command == "check-sources":

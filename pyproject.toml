@@ -11,6 +11,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dashboards = ["streamlit>=1.50", "pandas>=2.2"]
+notebooks = ["jupyterlab>=4.2", "matplotlib>=3.9", "pandas>=2.2"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

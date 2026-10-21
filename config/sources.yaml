@@ -33,7 +33,26 @@ sources:
     enabled: true
     verified: true
 
+  # Référentiel des gares SNCF (code UIC + coordonnées) : sert à relier les
+  # comptages SNCF (codes UIC) aux validations IDFM (zones de correspondance).
+  - name: sncf_liste_gares
+    kind: opendatasoft
+    base_url: https://ressources.data.sncf.com
+    dataset_id: liste-des-gares
+    schedule: weekly
+    enabled: true
+    verified: false
+
   # --- Île-de-France Mobilités (portail Opendatasoft) -----------------------
+  # Référentiel des gares et stations par ligne (id_ref_zdc + coordonnées).
+  - name: idfm_emplacement_gares
+    kind: opendatasoft
+    base_url: https://data.iledefrance-mobilites.fr
+    dataset_id: emplacement-des-gares-idf
+    schedule: weekly
+    enabled: true
+    verified: false
+
   # IDFM publie un jeu par numéro de trimestre (1er à 4ème) et le remplace par
   # l'année la plus récente à chaque publication. On collecte les quatre :
   # le bronze garde chaque version, donc l'historique des années passées.

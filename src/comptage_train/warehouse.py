@@ -37,6 +37,18 @@ TABLES: dict[str, tuple[str, str]] = {
         source VARCHAR, ingested_at TIMESTAMPTZ, sha256 VARCHAR, bytes BIGINT,
         format VARCHAR, path VARCHAR, origin_url VARCHAR,
         source_version VARCHAR"""),
+    # Une ligne par (exécution de `comptage qualify`, règle, résultat) : l'historique
+    # de la qualité. regle = 'STATUT' pour le décompte des statuts de lignes.
+    "quality_runs": ("monitoring", """
+        run_id VARCHAR, run_at TIMESTAMPTZ, version_regles VARCHAR, date_reference DATE,
+        source_sha256 VARCHAR, regle VARCHAR, resultat VARCHAR, lignes BIGINT"""),
+}
+
+# Couches dérivées (recalculables depuis le bronze), écrites par `comptage qualify`
+DERIVED = {
+    "silver": ["calendrier", "comptages", "correspondance_gares", "gares_sncf", "profils_tranches",
+               "schema_contrats", "validations_zone_jour", "zones_idfm"],
+    "quality": ["comptages_qualifies", "controles", "regles"],
 }
 
 
@@ -70,7 +82,8 @@ class RunLog:
 def connect(data_root: Path) -> duckdb.DuckDBPyConnection:
     """Connexion DuckDB en mémoire avec une vue par journal.
 
-    Vues : monitoring.http_calls, monitoring.ingestion_runs, bronze_raw.files.
+    Vues : monitoring.http_calls, monitoring.ingestion_runs, monitoring.quality_runs,
+    bronze_raw.files.
 
     Chaque vue part d'une table vide au schéma courant, unie par nom aux
     fichiers : une colonne ajoutée plus tard existe toujours (NULL dans les
@@ -90,6 +103,18 @@ def connect(data_root: Path) -> duckdb.DuckDBPyConnection:
                        f"FROM read_parquet('{pattern.as_posix()}', hive_partitioning = true, "
                        f"union_by_name = true)")
         con.execute(f"CREATE VIEW {schema}.{view} AS {select}")
+    return con
+
+
+def connect_derived(data_root: Path) -> duckdb.DuckDBPyConnection:
+    """Comme `connect`, plus une vue par table silver/quality déjà calculée."""
+    con = connect(data_root)
+    for schema, tables in DERIVED.items():
+        con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+        for table in tables:
+            path = data_root / schema / f"{table}.parquet"
+            if path.exists():
+                con.execute(f"CREATE VIEW {schema}.{table} AS SELECT * FROM '{path.as_posix()}'")
     return con
 
 

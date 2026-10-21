@@ -1,0 +1,172 @@
+# Règles de qualité appliquées aux comptages SNCF (couche silver -> quality).
+#
+# « Zéro boîte noire » : chaque règle est décrite ici, avec son seuil, sa
+# sévérité et sa pénalité. Le moteur (src/comptage_train/quality.py) ne fait
+# qu'appliquer ce fichier ; chaque résultat garde la version des règles.
+# Toute modification d'un seuil doit incrémenter `version` et être justifiée
+# (les seuils viennent du notebook de profilage, §9, et de la calibration
+# sur données réelles notée dans `calibration`).
+#
+# Résultat d'une règle pour une ligne : OK | ATTENTION | ERREUR | PAS_TESTE | NON_APPLICABLE
+# Statut d'une ligne : ERREUR si une règle est en ERREUR, sinon ATTENTION si une
+# règle est en ATTENTION, sinon VALIDE.
+# Score de confiance (0-100) : base - pénalités des ATTENTION + bonus, borné à
+# `plafond` ; une ligne en ERREUR vaut 0.
+
+version: "2026.10.1"
+
+score:
+  base: 90
+  plafond: 98
+  bonus_croisement: 5      # accordé quand RM_06 confirme la mesure par IDFM
+
+regles:
+  # --- Règles techniques (RT) : la donnée est-elle exploitable ? -------------
+  - id: RT_01
+    nom: Clés présentes
+    severite: ERREUR
+    description: gare, ligne, axe, date, type de jour et tranche sont renseignés.
+
+  - id: RT_02
+    nom: Format UIC
+    severite: ERREUR
+    description: le code gare est un code UIC Transilien à 8 chiffres commençant par 87.
+
+  - id: RT_03
+    nom: Typage du comptage
+    severite: ERREUR
+    description: la valeur publiée se convertit en nombre entier.
+
+  - id: RT_04
+    nom: Unicité
+    severite: ERREUR
+    description: une seule ligne par gare, ligne, axe, date, type de jour et tranche.
+
+  - id: RT_05
+    nom: Mesure présente
+    severite: ERREUR
+    description: le comptage n'est pas vide.
+
+  - id: RT_06
+    nom: Gare dans le référentiel
+    severite: ATTENTION
+    penalite: 5
+    description: le code UIC existe dans la liste des gares SNCF.
+
+  - id: RT_07
+    nom: Date valide
+    severite: ERREUR
+    seuils: {date_min: "2015-01-01"}
+    description: la date (après correction éventuelle) n'est ni future ni antérieure à date_min.
+
+  - id: RT_08
+    nom: Tranches complètes
+    severite: ATTENTION
+    penalite: 10
+    description: les 5 tranches horaires sont publiées pour la gare, la ligne, l'axe et la date.
+
+  - id: RT_09
+    nom: Référentiel croisé disponible
+    severite: ATTENTION
+    penalite: 5
+    description: la gare est reliée à une zone IDFM (table de correspondance), condition des contrôles croisés.
+
+  - id: RT_10
+    nom: Contrat de schéma
+    severite: ERREUR
+    description: le fichier bronze contient toutes les colonnes attendues (renommages connus acceptés).
+
+  - id: RT_11
+    nom: Cohérence date / type de jour
+    severite: ATTENTION
+    penalite: 10
+    description: >-
+      le jour de la semaine correspond au type de jour. Corrigée par inversion
+      jour/mois -> ATTENTION ; incohérente sans correction possible -> ERREUR.
+
+  - id: RT_12
+    nom: Libellés normalisés
+    severite: ERREUR
+    description: tranche horaire et type de jour appartiennent aux listes connues.
+
+  # --- Règles métier (RM) : la valeur est-elle plausible ? -------------------
+  - id: RM_01
+    nom: Montants positifs
+    severite: ERREUR
+    description: aucun comptage négatif.
+
+  - id: RM_02
+    nom: Plafond physique de la gare
+    severite: ATTENTION
+    penalite: 15
+    seuils: {attention: 1.0, erreur: 2.0}
+    calibration: "max observé 1,08 ; 99 % des gares-jours sous 0,68 (21/10/2026)"
+    description: >-
+      montées du jour dans la gare rapportées à la fréquentation annuelle / 365.
+      Au-delà du seuil attention -> ATTENTION, au-delà du seuil erreur -> ERREUR.
+
+  - id: RM_03
+    nom: Train supprimé
+    severite: ERREUR
+    non_applicable: les comptages ne portent pas de numéro de train ; règle rebranchée sur PRIM à l'étape 3.
+    description: un train supprimé ne peut pas avoir de voyageurs.
+
+  - id: RM_04
+    nom: Terminus
+    severite: ATTENTION
+    non_applicable: pas de mission dans les comptages ; règle rebranchée sur l'offre à l'étape 3.
+    description: pas de montées au terminus d'arrivée d'une mission.
+
+  - id: RM_05
+    nom: Faux zéro en pointe
+    severite: ERREUR
+    seuils: {tranches: ["De 6h à 10h", "De 16h à 20h"], type_jour: JOB}
+    description: un comptage nul en heure de pointe d'un jour ouvré est impossible sur une gare desservie.
+
+  - id: RM_06
+    nom: Cohérence avec les validations IDFM
+    severite: ATTENTION
+    penalite: 15
+    seuils: {facteur_max: 3.0, facteur_bonus: 1.25}
+    calibration: "ratio SNCF/IDFM médian 1,19 ; médiane par ligne de 0,14 (U) à 1,67 (R) (21/10/2026)"
+    description: >-
+      montées SNCF du jour / validations IDFM moyennes de la zone pour le même
+      type de jour, comparé au ratio médian de la ligne. Écart > facteur_max
+      (dans un sens ou l'autre) -> ATTENTION ; écart < facteur_bonus -> bonus.
+      Testé seulement sur une journée complète et une gare reliée.
+
+  - id: RM_07
+    nom: Profil horaire
+    severite: ATTENTION
+    penalite: 10
+    seuils: {ecart_points: 15}
+    calibration: "écart médian 1,9 pt, 99e centile 14,3 pts (21/10/2026)"
+    description: >-
+      part de la tranche dans la journée de la gare, comparée au profil
+      horaire IDFM de la zone (même type de jour). Écart > ecart_points -> ATTENTION.
+
+  - id: RM_08
+    nom: Week-end vs jour ouvré
+    severite: ATTENTION
+    penalite: 10
+    seuils: {ratio_max: 1.2}
+    calibration: "samedi / JOB médian 0,57, dimanche 0,42 ; 99e centile 1,15-1,29 (21/10/2026)"
+    description: >-
+      total d'un samedi ou dimanche rapporté au jour ouvré de la même gare, ligne
+      et axe. Au-delà de ratio_max -> ATTENTION.
+
+  - id: RM_09
+    nom: Valeur atypique (z-score robuste)
+    severite: ATTENTION
+    penalite: 10
+    seuils: {z_max: 3.5}
+    calibration: "3 % des tranches au-delà de 3,5 (21/10/2026)"
+    description: >-
+      part de la tranche dans la journée, comparée aux autres gares de la même
+      ligne, même type de jour et même tranche (médiane / MAD). |z| > z_max -> ATTENTION.
+
+  - id: RM_10
+    nom: Train direct
+    severite: ATTENTION
+    non_applicable: nécessite l'offre GTFS par train (étape 3).
+    description: pas de montées dans une gare non desservie par le train.

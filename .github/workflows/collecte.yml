@@ -2,7 +2,8 @@
 #
 # Le code vient de `main`, l'historique (bronze + journaux) vit sur la branche
 # orpheline `data` : chaque exécution y ajoute ses fichiers et pousse un commit.
-# Rien n'est jamais réécrit, donc deux exécutions ne peuvent pas se contredire.
+# Le bronze et les journaux ne sont jamais réécrits ; seules les tables dérivées
+# (silver/, quality/) sont remplacées, et Git garde leurs versions successives.
 name: Collecte
 
 on:
@@ -90,6 +91,22 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Silver + règles de qualité, recalculées quand les sources quotidiennes ou
+      # hebdomadaires ont pu changer. Un échec n'empêche pas de publier le bronze.
+      - name: Qualifier les données
+        id: qualify
+        if: steps.freq.outputs.schedule != 'hourly'
+        run: |
+          set +e
+          comptage qualify | tee qualify.log
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Qualité des comptages"
+            echo '```'
+            cat qualify.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publier sur la branche data
         run: |
           cd data
@@ -97,12 +114,19 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit --quiet -m "Collecte ${{ steps.freq.outputs.schedule }} $(date -u +%Y-%m-%dT%H:%MZ)"
-          # Les fichiers ont des noms uniques : un rebase ne peut pas créer de conflit.
+          # Fichiers bronze et journaux aux noms uniques, tables dérivées écrites seulement
+          # par les collectes quotidiennes (une à la fois) : un rebase ne peut pas créer de conflit.
           for i in 1 2 3 4; do
             git push --quiet origin data && exit 0
             sleep $((2 ** i))
             git pull --quiet --rebase origin data
           done
+          exit 1
+
+      - name: Signaler un échec de qualification
+        if: steps.qualify.outputs.status != '' && steps.qualify.outputs.status != '0'
+        run: |
+          echo "::error::La qualification a échoué, voir le résumé de l'exécution."
           exit 1
 
       - name: Signaler une source en erreur
