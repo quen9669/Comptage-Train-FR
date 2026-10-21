@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Any
 
 from ..settings import Source
@@ -38,7 +40,7 @@ def build_request(source: Source) -> RequestSpec:
             file_format="parquet",
         )
     if source.kind == "http_json":
-        return RequestSpec(url=source.url, file_format="json", params=dict(source.params))
+        return RequestSpec(url=source.url, file_format="json", params=resolve_params(source.params))
     if source.kind == "prim":
         key = os.environ.get("PRIM_API_KEY", "").strip()
         if not key:
@@ -46,6 +48,23 @@ def build_request(source: Source) -> RequestSpec:
         return RequestSpec(url=source.url, file_format="json",
                            params=dict(source.params), headers={"apikey": key})
     raise ValueError(f"Type de source inconnu : {source.kind}")
+
+
+_DATE_PARAM = re.compile(r"\{aujourd_hui(?:-(\d+))?\}")
+
+
+def resolve_params(params: dict[str, Any], today: date | None = None) -> dict[str, Any]:
+    """Remplace `{aujourd_hui}` ou `{aujourd_hui-N}` par la date (AAAA-MM-JJ) du jour de collecte.
+
+    Sert aux API d'archives qui demandent une période explicite (ex. météo
+    historique jusqu'à hier).
+    """
+    today = today or date.today()
+
+    def substitute(match: re.Match) -> str:
+        return (today - timedelta(days=int(match.group(1) or 0))).isoformat()
+
+    return {k: _DATE_PARAM.sub(substitute, v) if isinstance(v, str) else v for k, v in params.items()}
 
 
 def catalog_url(source: Source) -> str | None:
