@@ -8,10 +8,23 @@ d'affluence, à partir **uniquement de données Open Data publiques** (SNCF Open
 
 | Étape | Contenu | Dashboard | État |
 |---|---|---|---|
-| 1 | Ingestion historisée (bronze) + télémétrie des API | D0 Monitoring | en cours |
-| 2 | Qualification : règles RT/RM, score de confiance, lineage (silver) | D1, D2 | à venir |
+| 1 | Ingestion historisée (bronze) + télémétrie des API | D0 Monitoring | ✅ |
+| 2 | Qualification : règles RT/RM, score de confiance, lineage (silver) | D1, D2 | en cours : [profilage](notebooks/01_profilage_donnees.ipynb) |
 | 3 | Compte officiel : réconciliation, imputation (gold) | D3 | à venir |
 | 4 | Prédiction LightGBM quantile + SHAP, API FastAPI | D4 | à venir |
+
+## Profilage des données (étape 2A)
+
+Le notebook [`notebooks/01_profilage_donnees.ipynb`](notebooks/01_profilage_donnees.ipynb)
+examine chaque source réelle (schéma, couverture, anomalies, croisements possibles) et
+justifie, constat chiffré à l'appui, la révision des 20 règles qualité de l'étape 2B.
+Il est versionné **avec ses résultats** : il se lit directement sur GitHub.
+
+```bash
+git clone --branch data --single-branch https://github.com/quen9669/Comptage-Train-FR.git data
+pip install -e ".[notebooks]"
+jupyter lab notebooks/01_profilage_donnees.ipynb
+```
 
 ## Architecture de l'étape 1
 
