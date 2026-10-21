@@ -1,0 +1,54 @@
+# Prévision de l'affluence (étape 4). Moteur : src/comptage_train/prediction.py.
+#
+# Ce qu'on prédit : les voyageurs montants par gare x ligne x tranche horaire,
+# de J+1 à J+7, avec un intervalle [P10 ; P90].
+#
+# Comment : voyageurs = niveau habituel x indice du jour.
+#   - niveau habituel : médiane du compte officiel de la gare, de la ligne, de la
+#     tranche et de la catégorie de jour IDFM, sur l'historique récent ;
+#   - indice du jour : modèle LightGBM quantile (P10, P50, P90) appris sur les
+#     écarts au niveau habituel (calendrier), pondéré par le score de confiance.
+# Les contributions de chaque variable à l'indice (TreeSHAP, natif LightGBM)
+# expliquent chaque prévision, converties en voyageurs.
+#
+# Toute modification d'un paramètre doit incrémenter `version`.
+
+version: "2026.10.1"
+
+historique_jours: 365        # profondeur d'apprentissage (compte officiel MESURE + RECONCILIE_IDFM)
+horizon_jours: 7
+test_jours: 60               # dernière période connue, réservée à l'évaluation et au recalibrage
+
+variables:
+  - tranche_horaire
+  - ligne
+  - jour_semaine
+  - cat_jour_idfm
+  - ferie
+  - vacances
+  - pont                     # jour ouvré collé à un férié et à un week-end
+# Météo (pluie_mm, neige_cm) écartée : sur mai-juin 2026, l'ajouter fait passer l'erreur
+# de 18,5 % à 19,3 % (au-dessus de la référence 18,8 %). Un an d'historique ne suffit pas
+# à séparer son effet des grèves et des saisons (notebook 03 §4). Elle reste affichée.
+
+lightgbm:
+  learning_rate: 0.05
+  num_leaves: 31
+  min_data_in_leaf: 200
+  num_boost_round: 300
+
+# Intervalle recalibré sur la période de test pour couvrir réellement 80 % des cas
+# (les écarts d'un même jour sont liés entre gares : grève, pont, neige...).
+couverture_cible: 0.8
+
+# Niveau d'affluence, faute de capacité des trains en Open Data : intensité prévue
+# (voyageurs par heure de la tranche) comparée à l'historique de la même gare et ligne.
+niveaux:
+  moyen: 0.50                # au-delà de la médiane des intensités historiques
+  fort: 0.85                 # au-delà du 85e centile
+duree_tranches_h:            # heures de service couvertes par chaque tranche
+  "Avant 6h": 1.5
+  "De 6h à 10h": 4
+  "De 10h à 16h": 6
+  "De 16h à 20h": 4
+  "Après 20h": 5

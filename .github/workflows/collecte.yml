@@ -44,7 +44,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - run: pip install -e .
+      - run: pip install -e ".[prediction]"
 
       - name: Choisir la fréquence
         id: freq
@@ -91,18 +91,18 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Silver + règles de qualité puis compte officiel, recalculés quand les sources
+      # Silver + règles de qualité, compte officiel puis prévisions J+1..J+7, recalculés quand les sources
       # quotidiennes ou hebdomadaires ont pu changer. Un échec n'empêche pas de publier le bronze.
-      - name: Qualifier les données et calculer le compte officiel
+      - name: Qualifier les données, calculer le compte officiel et prévoir
         id: qualify
         if: steps.freq.outputs.schedule != 'hourly'
         run: |
           set +e
           set -o pipefail
-          { comptage qualify && comptage compte-officiel; } | tee qualify.log
+          { comptage qualify && comptage compte-officiel && comptage prevoir; } | tee qualify.log
           echo "status=$?" >> "$GITHUB_OUTPUT"
           {
-            echo "### Qualité des comptages et compte officiel"
+            echo "### Qualité, compte officiel et prévisions"
             echo '```'
             cat qualify.log
             echo '```'
@@ -127,7 +127,7 @@ jobs:
       - name: Signaler un échec de qualification
         if: steps.qualify.outputs.status != '' && steps.qualify.outputs.status != '0'
         run: |
-          echo "::error::La qualification ou le compte officiel a échoué, voir le résumé de l'exécution."
+          echo "::error::La qualification, le compte officiel ou la prévision a échoué, voir le résumé de l'exécution."
           exit 1
 
       - name: Signaler une source en erreur

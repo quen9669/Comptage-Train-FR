@@ -11,7 +11,7 @@ d'affluence, à partir **uniquement de données Open Data publiques** (SNCF Open
 | 1 | Ingestion historisée (bronze) + télémétrie des API | D0 Monitoring | ✅ |
 | 2 | Qualification : règles RT/RM, score de confiance, lineage (silver) | D1, D2 | ✅ ([profilage](notebooks/01_profilage_donnees.ipynb), [règles](config/regles_qualite.yaml)) |
 | 3 | Compte officiel : réconciliation, imputation (gold) | D3 | ✅ ([notebook](notebooks/02_compte_officiel.ipynb), [paramètres](config/compte_officiel.yaml)) |
-| 4 | Prédiction LightGBM quantile + SHAP, API FastAPI | D4 | à venir |
+| 4 | Prédiction LightGBM quantile + SHAP, API FastAPI | D4 | ✅ ([notebook](notebooks/03_prediction_affluence.ipynb), [paramètres](config/prediction.yaml)) |
 
 ## Profilage des données (étape 2A)
 
@@ -75,6 +75,38 @@ comptage qualify && comptage compte-officiel
 streamlit run dashboards/app.py     # + D3 compte officiel
 ```
 
+## Prévision de l'affluence (étape 4)
+
+`comptage prevoir` (lancé après le compte officiel par la collecte quotidienne) prévoit les
+voyageurs montants par **gare × ligne × tranche horaire, de J+1 à J+7**
+([`prediction.py`](src/comptage_train/prediction.py)) :
+
+* `voyageurs = niveau habituel × indice du jour`. Le niveau habituel est la médiane du compte
+  officiel (même gare, ligne, tranche et catégorie de jour IDFM). L'indice du jour vient de trois
+  modèles LightGBM quantile (P10, P50, P90) appris sur le calendrier (jour, férié, vacances, pont)
+  et pondérés par le score de confiance ;
+* l'intervalle P10-P90 est recalibré sur les 60 derniers jours connus pour couvrir vraiment 80 % des cas ;
+* chaque prévision est expliquée (TreeSHAP) en voyageurs : niveau habituel + effet de chaque variable ;
+* le niveau FAIBLE / MOYENNE / FORTE compare l'intensité prévue à l'historique de la gare et de la
+  ligne (la capacité des trains n'est pas en Open Data).
+
+Sur la période de test (mai-juin 2026), l'erreur pondérée est de 18,5 % contre 18,8 % pour le
+niveau habituel seul ; le gain vient surtout des ponts, et le modèle perd encore sur certains fériés. La météo a été testée puis écartée car
+elle dégradait l'erreur ([notebook 03](notebooks/03_prediction_affluence.ipynb) §4).
+Les métriques de chaque entraînement sont dans `gold/modele_evaluation.parquet`.
+
+```bash
+pip install -e ".[api,dashboards]"
+comptage prevoir                               # gold/previsions.parquet + modèle dans data/models/
+streamlit run dashboards/app.py                # + D4 affluence (écran de quai, intervalle, explication)
+uvicorn comptage_train.api:app --reload        # API : http://127.0.0.1:8000/docs
+curl "http://127.0.0.1:8000/api/v1/affluence?gare=87271031&ligne=B&date=2026-10-22&tranche=De%206h%20%C3%A0%2010h"
+```
+
+Endpoints : `/api/v1/gares`, `/api/v1/affluence` (une tranche), `/api/v1/affluence/journee`
+(les 5 tranches). Chaque réponse donne P50, intervalle, niveau, badge couleur, conseil voyageur et
+explication en une phrase.
+
 ## Architecture de l'étape 1
 
 ```
@@ -109,7 +141,7 @@ l'historique sur la branche orpheline **`data`** (le code reste sur `main`) :
 | Déclencheur | Sources |
 |---|---|
 | toutes les heures (hh:07 UTC) | `hourly` : prévisions Open-Meteo |
-| chaque jour 05:37 UTC | `daily` : SNCF, IDFM, calendriers, météo historique, PRIM + `check-sources`, puis qualification et compte officiel |
+| chaque jour 05:37 UTC | `daily` : SNCF, IDFM, calendriers, météo historique, PRIM + `check-sources`, puis qualification, compte officiel et prévisions J+1 à J+7 |
 | chaque lundi 06:37 UTC | `weekly` |
 
 Le résumé de chaque exécution (onglet **Actions**) affiche le résultat par source.
@@ -139,6 +171,7 @@ comptage check-sources          # vérifie que chaque jeu de données existe
 comptage ingest                 # collecte toutes les sources actives
 comptage qualify                # silver + règles de qualité
 comptage compte-officiel        # compte officiel (gold)
+comptage prevoir                # prévisions J+1 à J+7 (gold) ; API : uvicorn comptage_train.api:app
 streamlit run dashboards/app.py
 pytest
 ```

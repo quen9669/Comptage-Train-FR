@@ -10,9 +10,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dashboards = ["streamlit>=1.50", "pandas>=2.2"]
-notebooks = ["jupyterlab>=4.2", "matplotlib>=3.9", "pandas>=2.2"]
-dev = ["pytest>=8.0"]
+dashboards = ["streamlit>=1.50", "pandas>=2.2", "comptage-train[prediction]"]
+prediction = ["lightgbm>=4.3", "pandas>=2.2", "pyarrow>=15"]
+api = ["fastapi>=0.110", "uvicorn>=0.29", "comptage-train[prediction]"]
+notebooks = ["jupyterlab>=4.2", "matplotlib>=3.9", "comptage-train[prediction]"]
+dev = ["pytest>=8.0", "comptage-train[api]"]
 
 [project.scripts]
 comptage = "comptage_train.cli:main"
