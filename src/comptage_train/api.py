@@ -36,7 +36,7 @@ CONSEILS = {
 }
 LIBELLES = {"tranche_horaire": "tranche horaire", "ligne": "ligne", "jour_semaine": "jour de la semaine",
             "cat_jour_idfm": "type de jour", "ferie": "jour férié", "vacances": "vacances scolaires",
-            "pont": "pont", "pluie_mm": "pluie", "neige_cm": "neige"}
+            "pont": "pont", "fin_annee": "fêtes de fin d'année", "pluie_mm": "pluie", "neige_cm": "neige"}
 
 
 class Effet(BaseModel):

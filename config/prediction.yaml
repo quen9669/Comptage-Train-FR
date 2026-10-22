@@ -13,7 +13,7 @@
 #
 # Toute modification d'un paramètre doit incrémenter `version`.
 
-version: "2026.10.1"
+version: "2026.10.2"
 
 historique_jours: 365        # profondeur d'apprentissage (compte officiel MESURE + RECONCILIE_IDFM)
 horizon_jours: 7
@@ -27,9 +27,19 @@ variables:
   - ferie
   - vacances
   - pont                     # jour ouvré collé à un férié et à un week-end
+  - fin_annee                # du 24 décembre au 1er janvier (fêtes, réseau très creux)
 # Météo (pluie_mm, neige_cm) écartée : sur mai-juin 2026, l'ajouter fait passer l'erreur
-# de 18,5 % à 19,3 % (au-dessus de la référence 18,8 %). Un an d'historique ne suffit pas
+# de 18,1 % à 19,3 % (au-dessus de la référence 18,8 %). Un an d'historique ne suffit pas
 # à séparer son effet des grèves et des saisons (notebook 03 §4). Elle reste affichée.
+
+# Un férié est vu par le modèle comme un dimanche (jour_semaine = 7), comme dans la
+# catégorie de jour IDFM qui fixe son niveau habituel. Sinon le jeudi de l'Ascension
+# hérite de l'effet des seuls jeudis fériés appris, Noël et le Jour de l'an, bien plus
+# creux : moitié moins de voyageurs prévus, alors qu'un férié hors vacances fait 1,1 à
+# 1,3 dimanche (notebook 03 §3 bis). La variable fin_annee garde le creux des fêtes.
+# Erreur sur mai-juin 2026 : 18,5 % -> 18,1 % ; sur les 11 fériés, chacun prévu sans
+# l'avoir appris : 28,2 % -> 22,9 % (référence 28,9 %).
+ferie_comme_dimanche: true
 
 lightgbm:
   learning_rate: 0.05

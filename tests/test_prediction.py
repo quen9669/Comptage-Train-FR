@@ -122,3 +122,53 @@ def test_api(data_root, resultat, monkeypatch):
     assert len(client.get("/api/v1/affluence/journee", params={"gare": "87000001", "ligne": "C",
                                                                "date": jour}).json()) == 5
     assert client.get("/api/v1/affluence", params={"gare": "0", "ligne": "C", "date": jour}).status_code == 404
+
+
+def _historique_feries() -> pd.DataFrame:
+    """Un an pour quatre gares : les fériés hors vacances (des lundis) font 1,2 dimanche,
+    le seul jeudi férié (Noël, en vacances) n'en fait que 0,5."""
+    rng = np.random.default_rng(1)
+    noel = date(2025, 12, 25)
+    lundis_feries = {date(2025, 4, 21), date(2025, 6, 9), date(2025, 11, 10), date(2026, 4, 6),
+                     date(2025, 5, 5), date(2025, 9, 8), date(2026, 2, 2), date(2026, 3, 2)}
+    lignes = []
+    for gare in ("1", "2", "3", "4"):
+        for i in range(365):
+            j = date(2025, 4, 1) + timedelta(days=i)
+            ferie = j == noel or j in lundis_feries
+            dow = j.isoweekday()
+            cat = "DIJFP" if dow == 7 or ferie else "SAHV" if dow == 6 else "JOHV"
+            niveau = {"DIJFP": 300, "SAHV": 500, "JOHV": 1000}[cat]
+            if ferie:
+                niveau = 300 * (0.5 if j == noel else 1.2)
+            for tranche, part in zip(silver.TRANCHES, PARTS):
+                lignes.append(dict(code_gare=gare, ligne="C", date=j, tranche_horaire=tranche,
+                                   voyageurs=round(niveau * 5 * part * rng.normal(1, 0.03)), score_confiance=78,
+                                   jour_semaine=dow, cat_jour_idfm=cat, ferie=int(ferie),
+                                   vacances=int(j == noel), pont=0))
+    return pd.DataFrame(lignes)
+
+
+@pytest.mark.parametrize("comme_dimanche", [True, False])
+def test_jeudi_ferie_hors_vacances(config, comme_dimanche):
+    """L'Ascension (jeudi férié hors vacances) ne doit pas hériter de l'effet de Noël."""
+    # sans fin_annee : on isole l'effet du jour de la semaine porté par le seul jeudi férié connu
+    cfg = dataclasses.replace(config, ferie_comme_dimanche=comme_dimanche,
+                              variables=[v for v in config.variables if v != "fin_annee"])
+    hist = _historique_feries()
+    modalites = {c: sorted(hist[c].unique().tolist()) for c in prediction.CATEGORIELLES}
+    modele = prediction._apprendre(hist, cfg, modalites)
+    ascension = hist[hist.date == date(2025, 12, 25)].assign(date=date(2026, 5, 14), vacances=0)
+    attendu = ascension.voyageurs.sum() / 0.5 * 1.2          # 1,2 dimanche au lieu de 0,5
+    ratio = modele.predire(ascension).p50.sum() / attendu
+    if comme_dimanche:
+        assert ratio == pytest.approx(1.0, abs=0.15)
+    else:
+        assert ratio < 0.8   # le défaut corrigé : le jeudi férié est tiré vers Noël
+
+
+def test_calendrier_fin_annee(data_root):
+    con = warehouse.connect_derived(data_root)
+    cal = con.execute(f"SELECT jour::VARCHAR, fin_annee FROM ({prediction._CALENDRIER}) "
+                      "WHERE jour IN ('2025-12-23', '2025-12-24', '2025-12-31', '2026-01-01', '2026-01-02')").fetchall()
+    assert dict(cal) == {"2025-12-23": 0, "2025-12-24": 1, "2025-12-31": 1, "2026-01-01": 1, "2026-01-02": 0}
