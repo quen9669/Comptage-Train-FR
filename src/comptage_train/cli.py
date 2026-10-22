@@ -1,4 +1,4 @@
-"""Ligne de commande : `comptage ingest`, `qualify`, `compte-officiel` et `check-sources`."""
+"""Ligne de commande : `comptage ingest`, `qualify`, `compte-officiel`, `prevoir` et `check-sources`."""
 
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ def main(argv: list[str] | None = None) -> int:
     qualify.add_argument("--date", help="date de référence AAAA-MM-JJ (défaut : aujourd'hui)")
     compte = sub.add_parser("compte-officiel", help="calculer le compte officiel (après `qualify`)")
     compte.add_argument("--date", help="date de référence AAAA-MM-JJ (défaut : aujourd'hui)")
+    prevoir = sub.add_parser("prevoir", help="prévoir l'affluence J+1 à J+7 (après `compte-officiel`)")
+    prevoir.add_argument("--date", help="date de référence AAAA-MM-JJ (défaut : aujourd'hui)")
     args = parser.parse_args(argv)
 
     load_dotenv()
@@ -37,6 +39,12 @@ def main(argv: list[str] | None = None) -> int:
 
         for methode, lignes, voyageurs, score in run_gold(data_dir(), args.date):
             print(f"{methode:<16} {lignes:>8} lignes  {voyageurs:>12} voyageurs  score moyen {score}")
+        return 0
+    if args.command == "prevoir":
+        from .prediction import run_prediction
+
+        for metrique, valeur in run_prediction(data_dir(), args.date)[["metrique", "valeur"]].itertuples(index=False):
+            print(f"{metrique:<32} {valeur:.4g}")
         return 0
     sources = load_sources()
 
