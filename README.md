@@ -83,16 +83,18 @@ voyageurs montants par **gare × ligne × tranche horaire, de J+1 à J+7**
 
 * `voyageurs = niveau habituel × indice du jour`. Le niveau habituel est la médiane du compte
   officiel (même gare, ligne, tranche et catégorie de jour IDFM). L'indice du jour vient de trois
-  modèles LightGBM quantile (P10, P50, P90) appris sur le calendrier (jour, férié, vacances, pont)
-  et pondérés par le score de confiance ;
+  modèles LightGBM quantile (P10, P50, P90) appris sur le calendrier (jour, férié, vacances, pont,
+  fêtes de fin d'année) et pondérés par le score de confiance ;
 * l'intervalle P10-P90 est recalibré sur les 60 derniers jours connus pour couvrir vraiment 80 % des cas ;
 * chaque prévision est expliquée (TreeSHAP) en voyageurs : niveau habituel + effet de chaque variable ;
 * le niveau FAIBLE / MOYENNE / FORTE compare l'intensité prévue à l'historique de la gare et de la
   ligne (la capacité des trains n'est pas en Open Data).
 
-Sur la période de test (mai-juin 2026), l'erreur pondérée est de 18,5 % contre 18,8 % pour le
-niveau habituel seul ; le gain vient surtout des ponts, et le modèle perd encore sur certains fériés. La météo a été testée puis écartée car
-elle dégradait l'erreur ([notebook 03](notebooks/03_prediction_affluence.ipynb) §4).
+Sur la période de test (mai-juin 2026), l'erreur pondérée est de 18,1 % contre 18,8 % pour le
+niveau habituel seul ; le gain vient surtout des ponts et des fériés. Un férié est vu par le modèle
+comme un dimanche, comme dans la catégorie IDFM : sur les 11 fériés de l'historique, chacun prévu
+sans l'avoir appris, l'erreur passe de 28,2 % à 22,9 % (notebook 03 §3 bis). La météo a été
+testée puis écartée car elle dégradait l'erreur ([notebook 03](notebooks/03_prediction_affluence.ipynb) §4).
 Les métriques de chaque entraînement sont dans `gold/modele_evaluation.parquet`.
 
 ```bash

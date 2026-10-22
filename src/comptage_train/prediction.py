@@ -43,6 +43,7 @@ class Config:
     horizon_jours: int
     test_jours: int
     variables: list[str]
+    ferie_comme_dimanche: bool
     lightgbm: dict
     couverture_cible: float
     niveaux: dict
@@ -82,7 +83,9 @@ _CALENDRIER = """
            -- pont : jour ouvré entre un férié et un week-end (vendredi de l'Ascension...)
            (type_jour_sncf = 'JOB' AND (
               (lag(est_ferie) OVER w AND lead(type_jour_sncf) OVER w <> 'JOB')
-              OR (lead(est_ferie) OVER w AND lag(type_jour_sncf) OVER w <> 'JOB')))::INT AS pont
+              OR (lead(est_ferie) OVER w AND lag(type_jour_sncf) OVER w <> 'JOB')))::INT AS pont,
+           -- fêtes de fin d'année : du 24 décembre au 1er janvier
+           ((month(jour) = 12 AND day(jour) >= 24) OR (month(jour) = 1 AND day(jour) = 1))::INT AS fin_annee
     FROM silver.calendrier WINDOW w AS (ORDER BY jour)"""
 
 
@@ -129,8 +132,17 @@ class Modele:
     recalibrage: dict                 # {"bas": k, "haut": k}
     config: Config
 
-    def matrice(self, df: pd.DataFrame) -> pd.DataFrame:
+    def variables(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Valeurs vues par le modèle. Un férié y est un dimanche, comme dans la catégorie
+        de jour IDFM : sans cela, le modèle applique au jeudi de l'Ascension l'effet des seuls
+        jeudis fériés de l'historique (Noël, Jour de l'an), qui sont bien plus creux."""
         x = df[self.config.variables].copy()
+        if self.config.ferie_comme_dimanche and {"ferie", "jour_semaine"} <= set(x.columns):
+            x.loc[df["ferie"] == 1, "jour_semaine"] = 7
+        return x
+
+    def matrice(self, df: pd.DataFrame) -> pd.DataFrame:
+        x = self.variables(df)
         for col in CATEGORIELLES:
             if col in x:
                 x[col] = pd.Categorical(x[col], categories=self.modalites[col]).codes.astype("int32")
@@ -155,7 +167,7 @@ class Modele:
         out["contributions"] = [
             [{"variable": v, "valeur": str(r[v]), "effet_voyageurs": round(float(c[i] * b), 1)}
              for i, v in enumerate(variables)]
-            for r, c, b in zip(out[variables].to_dict("records"), contrib, base)]
+            for r, c, b in zip(self.variables(out).to_dict("records"), contrib, base)]
         duree = out["tranche_horaire"].map(self.config.duree_tranches_h).astype(float)
         out = out.merge(self.seuils, on=["code_gare", "ligne"], how="left")
         intensite = out["p50"] / duree
@@ -242,7 +254,7 @@ def prevoir(con, data_root: Path, date_reference: str, config: Config | None = N
 
 # --------------------------------------------------------------------------- persistance
 COLONNES = ["date_reference", "date", "code_gare", "nom_gare", "ligne", "tranche_horaire", "cat_jour_idfm",
-            "jour_semaine", "ferie", "vacances", "pont", "pluie_mm", "neige_cm", "source_meteo",
+            "jour_semaine", "ferie", "vacances", "pont", "fin_annee", "pluie_mm", "neige_cm", "source_meteo",
             "niveau_habituel", "p10", "p50", "p90", "niveau", "effet_modele", "contributions", "version_modele"]
 
 
