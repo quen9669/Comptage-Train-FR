@@ -1,0 +1,23 @@
+{
+  "0": "ingest.py",
+  "1": "gold.py",
+  "2": "prediction.py",
+  "3": "steps",
+  "4": "test_prediction.py",
+  "5": "seuils",
+  "6": "pathlib",
+  "7": "comptage_train/__init__.py",
+  "8": "api.py",
+  "9": "prediction.yaml",
+  "10": "test_ingest.py",
+  "11": "compte_officiel.yaml",
+  "12": "params",
+  "13": "silver.py",
+  "14": "Comptage Train FR",
+  "15": "quality.py",
+  "16": "steps",
+  "17": "test_quality.py",
+  "18": "Historique de collecte (branche `data`)",
+  "19": "CLAUDE.md",
+  "20": "comptage-train"
+}
